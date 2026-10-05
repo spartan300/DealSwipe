@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DealSwipe</title>
+<meta name="description" content="Swipe through Slickdeals front-page deals; learns your taste locally in your browser.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<style>
+:root{
+  --bg:#f4f5f7;--surface:#fff;--surface2:#eef0f3;--text:#14171c;--muted:#5f6773;--border:#dfe2e7;
+  --accent:#2563eb;--like:#16a34a;--nope:#dc2626;--have:#7c3aed;--pricey:#d97706;--shadow:0 10px 30px rgba(20,23,28,.12);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1115;--surface:#181b21;--surface2:#22262e;--text:#e9ecf1;--muted:#9aa3b0;--border:#2c313a;
+  --accent:#60a5fa;--like:#22c55e;--nope:#f87171;--have:#a78bfa;--pricey:#fbbf24;--shadow:0 10px 30px rgba(0,0,0,.45);
+}}
+:root[data-theme="dark"]{
+  --bg:#0f1115;--surface:#181b21;--surface2:#22262e;--text:#e9ecf1;--muted:#9aa3b0;--border:#2c313a;
+  --accent:#60a5fa;--like:#22c55e;--nope:#f87171;--have:#a78bfa;--pricey:#fbbf24;--shadow:0 10px 30px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;flex-direction:column;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer}
+header{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface)}
+header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.01em}
+.pill{min-width:0;flex-shrink:1;font-size:12px;color:var(--muted);background:var(--surface2);border-radius:999px;padding:3px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw}
+.pill.warn{color:var(--pricey)}
+.spacer{flex:1}
+.iconbtn{background:none;border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:14px}
+.iconbtn:hover{background:var(--surface2)}
+main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 16px;min-height:0}
+#deck{position:relative;width:100%;max-width:420px;flex:1;max-height:600px;min-height:0}
+.card{position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;touch-action:none;user-select:none;will-change:transform}
+.card.back{transform:scale(.96) translateY(10px);opacity:.7}
+.card .img{flex:1;min-height:120px;background:#fff center/contain no-repeat;position:relative}
+.card .body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:6px}
+.card .title{font-weight:600;font-size:16px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.price{font-size:20px;font-weight:800;color:var(--like)}
+.chip{background:var(--surface2);border-radius:999px;padding:2px 8px}
+.chip.hot{color:#fff;background:var(--nope)}
+.chip.why{color:var(--accent)}
+.stamp{position:absolute;top:18px;padding:4px 12px;border:3px solid;border-radius:10px;font-weight:800;font-size:22px;opacity:0;transform:rotate(-12deg);background:rgba(255,255,255,.85)}
+.stamp.like{left:16px;color:var(--like)}.stamp.nope{right:16px;color:var(--nope);transform:rotate(12deg)}
+.stamp.have{left:50%;bottom:18px;top:auto;transform:translateX(-50%);color:var(--have)}
+.stamp.pricey{left:50%;top:18px;transform:translateX(-50%);color:var(--pricey)}
+.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--muted);gap:8px;padding:24px}
+.actions{display:flex;gap:10px;justify-content:center;padding:12px 0 4px;width:100%;max-width:420px}
+.act{flex:1;border:none;border-radius:14px;padding:10px 4px;background:var(--surface);box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;gap:2px;font-size:20px}
+.act small{font-size:11px;color:var(--muted)}
+.act:active{transform:scale(.95)}
+.act.nope{color:var(--nope)}.act.like{color:var(--like)}.act.have{color:var(--have)}.act.pricey{color:var(--pricey)}
+.hint{font-size:11.5px;color:var(--muted);padding-bottom:max(8px,env(safe-area-inset-bottom));text-align:center}
+kbd{border:1px solid var(--border);border-radius:4px;padding:0 4px;font-size:11px;background:var(--surface)}
+/* drawers */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10}
+.scrim.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--surface);z-index:11;transform:translateX(100%);transition:transform .25s;display:flex;flex-direction:column;border-left:1px solid var(--border)}
+.drawer.open{transform:none}
+.drawer h2{margin:0;font-size:16px}
+.drawer .dh{display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
+.drawer .dc{overflow:auto;padding:12px 16px;flex:1}
+.section{margin-bottom:18px}
+.section h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 8px}
+.row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:none}
+.row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{width:90px;height:8px;background:var(--surface2);border-radius:4px;position:relative;overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;left:50%}
+.mini{border:1px solid var(--border);background:none;border-radius:6px;padding:0 7px;font-size:13px}
+.mini.on{background:var(--nope);color:#fff;border-color:var(--nope)}
+.saved{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);align-items:center}
+.saved img{width:48px;height:48px;object-fit:contain;background:#fff;border-radius:8px;flex:none}
+.saved a{color:var(--text);text-decoration:none;font-size:13.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.saved .s{font-size:12px;color:var(--muted)}
+.btn{border:1px solid var(--border);background:var(--surface2);border-radius:10px;padding:8px 12px;font-size:14px}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn.danger{color:var(--nope)}
+input[type=range]{width:100%}
+input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit}
+.toast{position:fixed;left:50%;top:64px;transform:translate(-50%,-20px);background:var(--text);color:var(--bg);padding:10px 14px;border-radius:12px;opacity:0;transition:.25s;z-index:20;max-width:calc(100vw - 32px);font-size:14px;cursor:pointer}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (max-width:480px){.hint{display:none}.pill{max-width:none}header h1{font-size:15px}header{gap:6px;padding:10px 12px}.iconbtn{padding:6px 8px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔥 DealSwipe</h1>
+  <span class="pill" id="status">Loading…</span>
+  <span class="spacer"></span>
+  <button class="iconbtn" id="refreshBtn" title="Refresh (R)">↻</button>
+  <button class="iconbtn" id="savedBtn" title="Saved deals">★ <span id="savedCount">0</span></button>
+  <button class="iconbtn" id="settingsBtn" title="Preferences">⚙︎</button>
+</header>
+
+<main>
+  <div id="deck"></div>
+  <div class="actions">
+    <button class="act nope" data-act="nope" title="Not for me (←)">✕<small>Nope</small></button>
+    <button class="act have" data-act="have" title="Already have it (↓)">✓<small>Have it</small></button>
+    <button class="act pricey" data-act="pricey" title="Interested, but too pricey (↑)">$<small>Too pricey</small></button>
+    <button class="act like" data-act="like" title="Interested (→)">♥<small>Want</small></button>
+  </div>
+  <div class="hint"><kbd>←</kbd> nope · <kbd>→</kbd> want · <kbd>↑</kbd> too pricey · <kbd>↓</kbd> have it · <kbd>Space</kbd> skip · <kbd>Z</kbd> undo · <kbd>Enter</kbd> open</div>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="savedDrawer">
+  <div class="dh"><h2>Saved deals</h2><span class="spacer"></span><button class="iconbtn" data-close>✕</button></div>
+  <div class="dc" id="savedList"></div>
+</aside>
+<aside class="drawer" id="settingsDrawer">
+  <div class="dh"><h2>Your preferences</h2><span class="spacer"></span><button class="iconbtn" data-close>✕</button></div>
+  <div class="dc">
+    <div class="section">
+      <h3>Hot-deal alerts</h3>
+      <button class="btn primary" id="alertsBtn">Enable alerts</button>
+      <p style="font-size:13px;color:var(--muted);margin:8px 0 4px">Alert when a new deal's match score is at least <b id="thVal"></b>. Price-drop matches always alert. Alerts only fire while this tab is open.</p>
+      <input type="range" id="threshold" min="0" max="6" step="0.25">
+    </div>
+    <div class="section"><h3>Categories (learned)</h3><div id="catList"></div></div>
+    <div class="section"><h3>Stores</h3><div id="storeList"></div></div>
+    <div class="section"><h3>Things you own</h3><div id="ownedList"></div></div>
+    <div class="section">
+      <h3>Data</h3>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 8px">Everything is stored only in this browser. Use export/import to move it to another device.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="exportBtn">Export</button>
+        <button class="btn" id="importBtn">Import</button>
+        <button class="btn" id="themeBtn">Theme</button>
+        <button class="btn danger" id="resetBtn">Reset all</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+    <div class="section">
+      <h3>Custom CORS proxy (optional)</h3>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 8px">Prefix the feed URL is appended to (URL-encoded). Tried first if set.</p>
+      <input type="text" id="customProxy" placeholder="https://my-proxy.example/?url=">
+    </div>
+  </div>
+</aside>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- constants ---------- */
+const FEED = 'https://slickdeals.net/newsearch.php?mode=frontpage&searcharea=deals&searchin=first&rss=1';
+const PROXIES = [
+  { name: 'allorigins', url: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
+  { name: 'codetabs',   url: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u) },
+  { name: 'corsproxy',  url: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u) },
+];
+const REFRESH_MS = 5 * 60 * 1000;
+const DEAL_TTL = 3 * 864e5, SEEN_TTL = 14 * 864e5;
+const EXPLORE_EVERY = 6;
+
+const CATEGORIES = {
+  'Computers':   /\b(laptop|notebook|chromebook|macbook|desktop|pc|ssd|nvme|hdd|hard drive|monitor|gpu|rtx|radeon|cpu|ryzen|intel|keyboard|mouse|router|wi-?fi|mesh|usb|ram|ddr\d|nas|flash drive|microsd|sd card|printer|webcam|ipad|tablet)\b/i,
+  'Phones & Wearables': /\b(apple watch|smartwatch|iphone|galaxy|pixel|smartphone|phone|android|airtag|charger|power bank|magsafe|wireless charg)\b/i,
+  'TV & Audio':  /\b(tv|oled|qled|soundbar|speaker|headphones?|earbuds|airpods|beats|bose|sony|jbl|projector|roku|fire tv|chromecast|turntable|receiver)\b/i,
+  'Gaming':      /\b(ps5|playstation|xbox|nintendo|switch|steam|game|gaming|controller|amiibo|joy-?con|meta quest|vr)\b/i,
+  'Smart Home':  /\b(echo|alexa|ring|nest|kasa|smart plug|smart bulb|camera|doorbell|security|eufy|wyze|blink|thermostat)\b/i,
+  'Kitchen':     /\b(air fryer|instant pot|ninja|blender|kitchen|cookware|pan|skillet|knife|knives|coffee|espresso|keurig|nespresso|kettle|toaster|microwave|kitchenaid|mixer|grill|griddle|food storage|pyrex|cutting board|utensils?|dishwasher|refrigerator|fridge|cups?|mugs?|tumbler)\b/i,
+  'Home':        /\b(vacuum|roomba|mop|mattress|pillow|bedding|sheets|towel|furniture|chair|desk|lamp|rug|curtain|humidifier|purifier|dehumidifier|fan|heater|storage|organizer|shelf|cleaner|detergent|tide|bounty|paper towels?|toilet paper|trash bags?)\b/i,
+  'Tools':       /\b(dewalt|milwaukee|ryobi|makita|bosch|craftsman|drill|driver|saw|wrench|socket|tool|tools|ladder|flashlight|battery|batteries|generator|inflator|compressor|pressure washer|lawn|mower|trimmer|leaf blower)\b/i,
+  'Auto':        /\b(car|auto|tire|tires|dash ?cam|motor oil|wiper|jump starter|vehicle|obd)\b/i,
+  'Apparel':     /\b(shirt|t-shirt|tee|pants|jeans|shorts|jacket|hoodie|sweater|socks|shoes|sneakers|boots|sandals|nike|adidas|under armour|levi'?s|columbia|carhartt|apparel|clothing|dress|underwear|backpack|wallet|beanie|hat|gloves|coat)\b/i,
+  'Grocery':     /\b(snack|coffee beans|k-?cups?|protein|cereal|candy|chocolate|drink|soda|water|tea|grocery|food|chips|jerky|nuts|pantry|whole foods|beer|wine|gum|mints?|altoids|beverage)\b/i,
+  'Health & Beauty': /\b(vitamin|supplement|toothbrush|oral-?b|razor|shaver|gillette|shampoo|lotion|skincare|sunscreen|cerave|makeup|fragrance|cologne|perfume|medicine|first aid|massage|scale)\b/i,
+  'Toys & Kids': /\b(lego|toy|toys|kids|baby|diaper|stroller|car seat|puzzle|board game|nerf|barbie|hot wheels)\b/i,
+  'Outdoors & Fitness': /\b(camping|tent|hiking|bike|bicycle|e-?bike|scooter|kayak|fishing|cooler|yeti|stanley|hydro ?flask|fitness|dumbbell|treadmill|yoga|golf|garmin|fitbit)\b/i,
+  'Travel & Services': /\b(flight|hotel|travel|luggage|suitcase|cruise|vacation|subscription|membership|streaming|vpn|insurance|credit card|bank|bonus)\b/i,
+  'Books, Media & Gift Cards': /\b(gift cards?|egift|book|hardcover|paperback|blu-?ray|dvd|vinyl|software|microsoft 365|office|antivirus|app|ebook|kindle|audible|course|pdf|digital)\b/i,
+};
+const STOP = new Set('a an and the for with of to in on at by or from + & free shipping s h ship sh fs w/ w prime members member select stores store off pack count ct oz lb lbs in. ft each set new only via ac sl yma pc pcs piece pieces size sizes various colors color more amazon walmart target best buy costco'.split(' '));
+
+/* ---------- storage (safe) ---------- */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('ds.' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('ds.' + k, JSON.stringify(v)); } catch (e) { console.warn('storage', e); } },
+  clear() { try { Object.keys(localStorage).filter(k => k.startsWith('ds.')).forEach(k => localStorage.removeItem(k)); } catch {} },
+};
+const defaultPrefs = () => ({ cat: {}, store: {}, tok: {}, muted: {}, priceCeil: {}, owned: [], n: 0 });
+const defaultSettings = () => ({ threshold: 2.5, alerts: false, lastProxy: null, lastVisit: 0, lastFetch: 0, customProxy: '' });
+
+let deals = store.get('deals', {});      // id -> deal
+let prefs = Object.assign(defaultPrefs(), store.get('prefs', {}));
+let seen = store.get('seen', {});        // id -> {a, t}
+let settings = Object.assign(defaultSettings(), store.get('settings', {}));
+let alerted = store.get('alerted', {});  // id -> t
+const saveAll = () => { store.set('deals', deals); store.set('prefs', prefs); store.set('seen', seen); store.set('settings', settings); store.set('alerted', alerted); };
+
+/* ---------- feed ---------- */
+async function fetchText(url, ms = 9000) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const txt = await r.text();
+    if (!txt.includes('<rss')) throw new Error('not rss');
+    return txt;
+  } finally { clearTimeout(t); }
+}
+async function fetchFeed() {
+  const list = [...PROXIES];
+  if (settings.customProxy) list.unshift({ name: 'custom', url: u => settings.customProxy + encodeURIComponent(u) });
+  const i = list.findIndex(p => p.name === settings.lastProxy);
+  if (i > 0) list.unshift(...list.splice(i, 1));
+  let lastErr;
+  for (const p of list) {
+    try { const xml = await fetchText(p.url(FEED)); settings.lastProxy = p.name; return xml; }
+    catch (e) { lastErr = e; console.warn('proxy failed', p.name, e.message); }
+  }
+  throw lastErr || new Error('all proxies failed');
+}
+function parseFeed(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const out = [];
+  for (const it of doc.querySelectorAll('item')) {
+    const link = it.querySelector('link')?.textContent.trim() || '';
+    const id = (link.match(/\/f\/(\d+)/) || [])[1];
+    if (!id) continue;
+    const title = it.querySelector('title')?.textContent.trim() || '';
+    const desc = it.querySelector('description')?.textContent || '';
+    const html = it.getElementsByTagNameNS('http://purl.org/rss/1.0/modules/content/', 'encoded')[0]?.textContent || '';
+    const h = new DOMParser().parseFromString(html, 'text/html');
+    const img = h.querySelector('img')?.getAttribute('src') || '';
+    const thumbs = parseInt((html.match(/Thumb Score:\s*([+-]?\d+)/) || [])[1] || '0', 10);
+    const storeSlug = h.querySelector('[data-store-slug]')?.getAttribute('data-store-slug') || '';
+    const pub = Date.parse(it.querySelector('pubDate')?.textContent || '') || Date.now();
+    out.push({ id, title, link: link.replace(/\?.*$/, ''), img, thumbs, store: storeSlug, pub, price: parsePrice(title, desc), desc: desc.replace(/\s+/g, ' ').slice(0, 220) });
+  }
+  return out;
+}
+function parsePrice(title, desc) {
+  if (/\bfree\b/i.test(title) && !/\$\d/.test(title)) return 0;
+  const m = title.match(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/) || desc.match(/\*\$(\d[\d,]*(?:\.\d{1,2})?)\*/);
+  return m ? parseFloat(m[1].replace(/,/g, '')) : null;
+}
+
+/* ---------- features ---------- */
+function categoryOf(d) {
+  const text = d.title;
+  let best = 'Other', bestIdx = Infinity;
+  for (const [c, re] of Object.entries(CATEGORIES)) {
+    const m = text.match(re);
+    if (m && m.index < bestIdx) { best = c; bestIdx = m.index; } // earliest keyword ≈ product noun
+  }
+  return best;
+}
+function tokensOf(d) {
+  const t = d.title.replace(/\$[\d.,]+/g, ' ').toLowerCase().replace(/[^a-z0-9\- ]/g, ' ').split(/\s+/);
+  return [...new Set(t.filter(w => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w) && !/^\d+(gb|tb|mah|w|in|oz|ft|pk|ct|qt|pc)$/.test(w)))].slice(0, 10);
+}
+const featCache = new Map();
+function feat(d) {
+  let f = featCache.get(d.id);
+  if (!f) { f = { cat: categoryOf(d), tok: tokensOf(d) }; featCache.set(d.id, f); }
+  return f;
+}
+const overlap = (a, b) => { if (!a.length || !b.length) return 0; const s = new Set(b); return a.filter(x => s.has(x)).length / Math.min(a.length, b.length); };
+
+/* ---------- model ---------- */
+function ceilingFor(d) {
+  const f = feat(d);
+  for (const c of Object.values(prefs.priceCeil)) if (overlap(f.tok, c.tok) >= 0.6) return c;
+  return null;
+}
+function isOwned(d) { const f = feat(d); return prefs.owned.some(o => overlap(f.tok, o.tok) >= 0.6); }
+function score(d) {
+  const f = feat(d);
+  const w = k => (prefs.tok[k] || 0);
+  const tokAvg = f.tok.length ? f.tok.reduce((s, k) => s + w(k), 0) / f.tok.length : 0;
+  const tokMax = f.tok.reduce((m, k) => Math.max(m, w(k)), 0);
+  const ageH = (Date.now() - d.pub) / 36e5;
+  let s = (prefs.cat[f.cat] || 0) + 0.5 * (prefs.store[d.store] || 0) + 0.6 * tokAvg + 0.4 * tokMax
+        + 0.35 * Math.log1p(Math.max(0, d.thumbs)) + Math.max(0, 1 - ageH / 24) * 0.5;
+  const c = ceilingFor(d);
+  if (c && d.price != null) s += d.price <= c.max ? 3 : -1.5;
+  return s;
+}
+function why(d) {
+  const f = feat(d), bits = [];
+  if ((prefs.cat[f.cat] || 0) > 0.5) bits.push('you like ' + f.cat);
+  if ((prefs.store[d.store] || 0) > 0.5) bits.push('you like ' + d.store);
+  const t = f.tok.filter(k => (prefs.tok[k] || 0) > 0.5)[0]; if (t) bits.push('"' + t + '"');
+  const c = ceilingFor(d); if (c && d.price != null && d.price <= c.max) bits.unshift('💸 under your $' + c.max.toFixed(0) + ' target');
+  if (d.thumbs >= 100) bits.push('🔥 popular');
+  return bits.slice(0, 2).join(' · ');
+}
+function learn(d, action, sign = 1) {
+  const f = feat(d);
+  if (sign < 0) prefs.n--; // undo: reuse the learning rate the original swipe used
+  const lr = sign * Math.max(0.3, 1 / Math.sqrt(1 + prefs.n / 20));
+  const bump = (m, k, v) => { m[k] = Math.max(-5, Math.min(5, (m[k] || 0) + v)); if (Math.abs(m[k]) < 1e-3) delete m[k]; };
+  const W = { like: [1, .6, .8], nope: [-.8, -.3, -.6], have: [.25, 0, 0], pricey: [.6, .2, .5] }[action];
+  if (!W) return;
+  bump(prefs.cat, f.cat, W[0] * lr);
+  if (d.store) bump(prefs.store, d.store, W[1] * lr);
+  f.tok.forEach(k => bump(prefs.tok, k, W[2] * lr));
+  if (action === 'have') {
+    if (sign > 0) prefs.owned.push({ id: d.id, tok: f.tok, title: d.title });
+    else prefs.owned = prefs.owned.filter(o => o.id !== d.id);
+  }
+  if (action === 'pricey' && d.price) {
+    if (sign > 0) prefs.priceCeil[d.id] = { tok: f.tok, max: +(d.price * 0.8).toFixed(2), was: d.price, title: d.title };
+    else delete prefs.priceCeil[d.id];
+  }
+  if (sign > 0) prefs.n++;
+}
+
+/* ---------- deck ---------- */
+let queue = [], skipped = new Set(), history = [], served = 0;
+function buildQueue() {
+  const cand = Object.values(deals).filter(d => !seen[d.id] && !skipped.has(d.id) && !prefs.muted[feat(d).cat] && !isOwned(d));
+  const sc = new Map(cand.map(d => [d, score(d)]));
+  cand.sort((a, b) => sc.get(b) - sc.get(a));
+  queue = cand;
+  if (!queue.length && skipped.size) { skipped.clear(); return buildQueue(); }
+}
+function nextDeal() {
+  if (!queue.length) return null;
+  served++;
+  if (served % EXPLORE_EVERY === 0 && queue.length > 4) { // exploration: random lower-ranked card
+    const j = 2 + Math.floor(Math.random() * (queue.length - 2));
+    [queue[0], queue[j]] = [queue[j], queue[0]];
+  }
+  return queue[0];
+}
+
+/* ---------- UI ---------- */
+const $ = s => document.querySelector(s);
+const deckEl = $('#deck');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ago = t => { const m = Math.round((Date.now() - t) / 6e4); return m < 60 ? m + 'm' : m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd'; };
+let current = null;
+
+function cardHTML(d, back) {
+  const f = feat(d), w = why(d);
+  return `<div class="card${back ? ' back' : ''}" data-id="${d.id}">
+    <div class="img" style="background-image:url('${esc(d.img)}')">
+      <div class="stamp like">WANT</div><div class="stamp nope">NOPE</div>
+      <div class="stamp have">HAVE IT</div><div class="stamp pricey">TOO PRICEY</div>
+    </div>
+    <div class="body">
+      <div class="title">${esc(d.title)}</div>
+      <div class="meta">
+        ${d.price != null ? `<span class="price">${d.price === 0 ? 'FREE' : '$' + d.price.toFixed(d.price % 1 ? 2 : 0)}</span>` : ''}
+        <span class="chip${d.thumbs >= 100 ? ' hot' : ''}">👍 ${d.thumbs}</span>
+        <span class="chip">${esc(f.cat)}</span>
+        ${d.store ? `<span class="chip">${esc(d.store)}</span>` : ''}
+        <span>${ago(d.pub)} ago</span>
+      </div>
+      ${w ? `<div class="meta"><span class="chip why">${esc(w)}</span></div>` : ''}
+    </div>
+  </div>`;
+}
+function render() {
+  buildQueue();
+  current = nextDeal();
+  if (!current) {
+    const loading = !Object.keys(deals).length;
+    deckEl.innerHTML = `<div class="empty"><div style="font-size:40px">${loading ? '⏳' : '🎉'}</div>
+      <div><b>${loading ? 'Fetching deals…' : "You're all caught up"}</b></div>
+      <div>${loading ? '' : 'New deals get checked every 5 minutes. Leave this tab open for alerts.'}</div>
+      ${history.length ? '<button class="btn" id="undoEmpty">Undo last (Z)</button>' : ''}</div>`;
+    $('#undoEmpty')?.addEventListener('click', undo);
+  } else {
+    const nxt = queue.find(d => d !== current);
+    deckEl.innerHTML = (nxt ? cardHTML(nxt, true) : '') + cardHTML(current, false);
+    attachDrag(deckEl.querySelector('.card:not(.back)'));
+  }
+  $('#savedCount').textContent = Object.values(seen).filter(s => s.a === 'like' || s.a === 'pricey').length;
+}
+function act(action, card) {
+  if (!current) return;
+  const d = current;
+  card = card || deckEl.querySelector('.card:not(.back)');
+  if (action === 'skip') { skipped.add(d.id); }
+  else { learn(d, action); seen[d.id] = { a: action, t: Date.now() }; history.push(d.id); if (history.length > 30) history.shift(); saveAll(); }
+  const dirs = { like: [1, 0], nope: [-1, 0], pricey: [0, -1], have: [0, 1], skip: [0, 1] };
+  const [dx, dy] = dirs[action];
+  if (card) {
+    card.style.transition = 'transform .28s ease-out, opacity .28s';
+    card.style.transform = `translate(${dx * 600}px,${dy * 700}px) rotate(${dx * 25}deg)`;
+    card.style.opacity = '0';
+    const back = deckEl.querySelector('.card.back');
+    if (back) { back.style.transition = 'transform .28s, opacity .28s'; back.classList.remove('back'); }
+    current = null;
+    setTimeout(render, 220);
+  } else render();
+}
+function undo() {
+  const id = history.pop(); if (!id || !seen[id]) return;
+  if (deals[id]) learn(deals[id], seen[id].a, -1);
+  delete seen[id]; saveAll();
+  // force the undone card to the front
+  render();
+  if (deals[id] && current?.id !== id) { const d = deals[id]; queue = [d, ...queue.filter(x => x !== d)]; current = d;
+    deckEl.innerHTML = cardHTML(d, false); attachDrag(deckEl.querySelector('.card')); }
+  toast('Undone');
+}
+function attachDrag(card) {
+  if (!card) return;
+  let sx, sy, dx = 0, dy = 0, drag = false, moved = false;
+  const stamps = { like: card.querySelector('.stamp.like'), nope: card.querySelector('.stamp.nope'), have: card.querySelector('.stamp.have'), pricey: card.querySelector('.stamp.pricey') };
+  const dirOf = () => Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'like' : 'nope') : (dy > 0 ? 'have' : 'pricey');
+  card.addEventListener('pointerdown', e => { drag = true; moved = false; sx = e.clientX; sy = e.clientY; card.setPointerCapture(e.pointerId); card.style.transition = 'none'; });
+  card.addEventListener('pointermove', e => {
+    if (!drag) return;
+    dx = e.clientX - sx; dy = e.clientY - sy;
+    if (Math.hypot(dx, dy) > 6) moved = true;
+    card.style.transform = `translate(${dx}px,${dy}px) rotate(${dx / 18}deg)`;
+    const dir = dirOf(), p = Math.min(1, Math.hypot(dx, dy) / 110);
+    for (const k in stamps) stamps[k].style.opacity = k === dir ? p : 0;
+  });
+  const end = () => {
+    if (!drag) return; drag = false;
+    const far = Math.abs(dx) > 100 || Math.abs(dy) > 100;
+    if (far) act(dirOf(), card);
+    else { card.style.transition = 'transform .2s'; card.style.transform = ''; for (const k in stamps) stamps[k].style.opacity = 0;
+      if (!moved && current) window.open(current.link, '_blank', 'noopener'); }
+    dx = dy = 0;
+  };
+  card.addEventListener('pointerup', end);
+  card.addEventListener('pointercancel', end);
+}
+
+/* ---------- drawers ---------- */
+function openDrawer(id) { $('#scrim').classList.add('open'); $(id).classList.add('open'); if (id === '#savedDrawer') renderSaved(); else renderSettings(); }
+function closeDrawers() { document.querySelectorAll('.drawer,.scrim').forEach(e => e.classList.remove('open')); render(); }
+function renderSaved() {
+  const items = Object.entries(seen).filter(([, s]) => s.a === 'like' || s.a === 'pricey').sort((a, b) => b[1].t - a[1].t);
+  $('#savedList').innerHTML = items.length ? items.map(([id, s]) => {
+    const d = deals[id]; const c = prefs.priceCeil[id];
+    if (!d) return '';
+    return `<div class="saved"><img src="${esc(d.img)}" alt="" loading="lazy"><div style="flex:1;min-width:0">
+      <a href="${esc(d.link)}" target="_blank" rel="noopener">${esc(d.title)}</a>
+      <div class="s">${s.a === 'pricey' && c ? `💸 watching for ≤ $${c.max} (was $${c.was})` : '♥ want'} · ${ago(s.t)} ago</div></div>
+      <button class="mini" data-unsave="${id}" title="Remove">✕</button></div>`;
+  }).join('') : '<p style="color:var(--muted)">Nothing saved yet. Swipe right (want) or up (too pricey).</p>';
+}
+function weightRows(map, kind, keys) {
+  const rows = keys.map(k => [k, map[k] || 0]).sort((a, b) => b[1] - a[1]);
+  return rows.map(([k, v]) => {
+    const pct = Math.min(50, Math.abs(v) / 5 * 50);
+    const muted = kind === 'cat' && prefs.muted[k];
+    return `<div class="row"><span class="name" style="${muted ? 'opacity:.45;text-decoration:line-through' : ''}">${esc(k)}</span>
+      <span class="bar"><i style="${v >= 0 ? `left:50%;width:${pct}%;background:var(--like)` : `left:${50 - pct}%;width:${pct}%;background:var(--nope)`}"></i></span>
+      <button class="mini" data-w="${kind}|${esc(k)}|-1">−</button><button class="mini" data-w="${kind}|${esc(k)}|1">+</button>
+      ${kind === 'cat' ? `<button class="mini${muted ? ' on' : ''}" data-mute="${esc(k)}" title="Hide this category">🔇</button>` : ''}</div>`;
+  }).join('');
+}
+function renderSettings() {
+  $('#thVal').textContent = settings.threshold;
+  $('#threshold').value = settings.threshold;
+  $('#customProxy').value = settings.customProxy || '';
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  $('#alertsBtn').textContent = settings.alerts && perm === 'granted' ? 'Alerts on ✓ (tap to turn off)' : perm === 'denied' ? 'Notifications blocked in browser' : 'Enable alerts';
+  $('#catList').innerHTML = weightRows(prefs.cat, 'cat', [...Object.keys(CATEGORIES), 'Other']);
+  const stores = [...new Set([...Object.keys(prefs.store), ...Object.values(deals).map(d => d.store).filter(Boolean)])];
+  $('#storeList').innerHTML = weightRows(prefs.store, 'store', stores) || '<p style="color:var(--muted)">None yet.</p>';
+  $('#ownedList').innerHTML = prefs.owned.length ? prefs.owned.map((o, i) => `<div class="row"><span class="name">${esc(o.title)}</span><button class="mini" data-unown="${i}">✕</button></div>`).join('')
+    : '<p style="color:var(--muted);margin:0">Swipe down on things you already have. Similar deals get hidden.</p>';
+}
+
+/* ---------- alerts ---------- */
+let unreadAlerts = 0;
+const baseTitle = document.title;
+function setBadge() { document.title = unreadAlerts ? `(${unreadAlerts}) ${baseTitle}` : baseTitle; }
+let toastTimer;
+function toast(msg, onClick) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show'); t.onclick = () => { t.classList.remove('show'); onClick?.(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 5000);
+}
+function checkAlerts(fresh) {
+  const hits = [];
+  for (const d of fresh) {
+    if (alerted[d.id] || seen[d.id] || isOwned(d) || prefs.muted[feat(d).cat]) continue;
+    const c = ceilingFor(d), priceHit = c && d.price != null && d.price <= c.max;
+    if (priceHit || (prefs.n >= 5 && score(d) >= settings.threshold)) hits.push({ d, priceHit });
+  }
+  if (!hits.length) return;
+  hits.forEach(h => alerted[h.d.id] = Date.now());
+  store.set('alerted', alerted);
+  const top = hits.sort((a, b) => b.priceHit - a.priceHit || score(b.d) - score(a.d))[0];
+  const label = (top.priceHit ? '💸 Price drop: ' : '🔥 Hot deal for you: ') + top.d.title;
+  if (document.hidden) { unreadAlerts += hits.length; setBadge(); }
+  toast(label + (hits.length > 1 ? ` (+${hits.length - 1} more)` : ''), () => window.open(top.d.link, '_blank', 'noopener'));
+  if (settings.alerts && 'Notification' in window && Notification.permission === 'granted') {
+    hits.slice(0, 3).forEach(({ d, priceHit }) => {
+      try {
+        const n = new Notification(priceHit ? '💸 Price drop on something you wanted' : '🔥 Hot deal for you', { body: d.title, icon: d.img, tag: 'ds-' + d.id });
+        n.onclick = () => { window.focus(); window.open(d.link, '_blank', 'noopener'); n.close(); };
+      } catch (e) { console.warn(e); }
+    });
+  }
+}
+
+/* ---------- refresh loop ---------- */
+let refreshing = false;
+function setStatus(txt, warn) { const s = $('#status'); s.textContent = txt; s.classList.toggle('warn', !!warn); }
+async function refresh(manual) {
+  if (refreshing) return; refreshing = true;
+  setStatus('Refreshing…');
+  try {
+    const items = parseFeed(await fetchFeed());
+    const fresh = [];
+    for (const d of items) {
+      if (!deals[d.id]) fresh.push(d);
+      featCache.delete(d.id);
+      deals[d.id] = Object.assign(deals[d.id] || {}, d, { seenAt: deals[d.id]?.seenAt || Date.now() });
+    }
+    prune();
+    settings.lastFetch = Date.now();
+    saveAll();
+    const firstLoad = !settings.lastVisit;
+    if (!firstLoad) checkAlerts(fresh);
+    const newCount = items.filter(d => !seen[d.id]).length;
+    setStatus(`${newCount} unswiped · updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+    if (manual && !fresh.length) toast('No new deals yet');
+    if (!current) render(); else updateBackCard();
+  } catch (e) {
+    console.error(e);
+    setStatus(settings.lastFetch ? `Offline · last ${ago(settings.lastFetch)} ago` : 'Feed unavailable, retrying', true);
+    if (!Object.keys(deals).length) deckEl.innerHTML = `<div class="empty"><div style="font-size:40px">⚠️</div><b>Couldn't reach the deal feed</b><div>The free CORS proxies may be down or blocked on this network. Try again, or set a custom proxy in ⚙︎.</div><button class="btn" onclick="location.reload()">Retry</button></div>`;
+  } finally { refreshing = false; }
+}
+function updateBackCard() { /* keep the current card stable; queue will pick up new deals on next swipe */ }
+function prune() {
+  const now = Date.now();
+  for (const [id, d] of Object.entries(deals)) {
+    const keep = seen[id] && (seen[id].a === 'like' || seen[id].a === 'pricey');
+    if (!keep && now - (d.seenAt || d.pub) > DEAL_TTL) delete deals[id];
+  }
+  for (const [id, s] of Object.entries(seen)) if (now - s.t > SEEN_TTL && s.a !== 'like' && s.a !== 'pricey') delete seen[id];
+  for (const [id, t] of Object.entries(alerted)) if (now - t > SEEN_TTL) delete alerted[id];
+}
+
+/* ---------- events ---------- */
+document.querySelectorAll('.act').forEach(b => b.addEventListener('click', () => act(b.dataset.act)));
+$('#refreshBtn').onclick = () => refresh(true);
+$('#savedBtn').onclick = () => openDrawer('#savedDrawer');
+$('#settingsBtn').onclick = () => openDrawer('#settingsDrawer');
+$('#scrim').onclick = closeDrawers;
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = closeDrawers);
+$('#savedList').addEventListener('click', e => {
+  const id = e.target.dataset.unsave; if (!id) return;
+  if (deals[id] && seen[id]) learn(deals[id], seen[id].a, -1);
+  delete seen[id]; saveAll(); renderSaved();
+});
+$('#settingsDrawer').addEventListener('click', e => {
+  const t = e.target;
+  if (t.dataset.w) { const [kind, k, v] = t.dataset.w.split('|'); const m = prefs[kind]; m[k] = Math.max(-5, Math.min(5, (m[k] || 0) + +v)); saveAll(); renderSettings(); }
+  if (t.dataset.mute) { const k = t.dataset.mute; prefs.muted[k] ? delete prefs.muted[k] : prefs.muted[k] = 1; saveAll(); renderSettings(); }
+  if (t.dataset.unown) { prefs.owned.splice(+t.dataset.unown, 1); saveAll(); renderSettings(); }
+});
+$('#threshold').oninput = e => { settings.threshold = +e.target.value; $('#thVal').textContent = settings.threshold; saveAll(); };
+$('#customProxy').onchange = e => { settings.customProxy = e.target.value.trim(); saveAll(); };
+$('#alertsBtn').onclick = async () => {
+  if (!('Notification' in window)) return toast('Notifications not supported in this browser');
+  if (settings.alerts && Notification.permission === 'granted') settings.alerts = false;
+  else { const p = await Notification.requestPermission(); settings.alerts = p === 'granted'; if (p === 'granted') new Notification('DealSwipe alerts on', { body: "We'll ping you about hot deals that match your taste." }); }
+  saveAll(); renderSettings();
+};
+$('#exportBtn').onclick = () => {
+  const blob = new Blob([JSON.stringify({ v: 1, prefs, seen, settings }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'dealswipe-prefs.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('#importBtn').onclick = () => $('#importFile').click();
+$('#importFile').onchange = async e => {
+  try { const j = JSON.parse(await e.target.files[0].text()); prefs = Object.assign(defaultPrefs(), j.prefs); seen = j.seen || {}; settings = Object.assign(defaultSettings(), j.settings); saveAll(); renderSettings(); toast('Preferences imported'); }
+  catch { toast('Invalid file'); }
+};
+$('#resetBtn').onclick = () => { if (confirm('Erase all learned preferences and history from this browser?')) { store.clear(); location.reload(); } };
+$('#themeBtn').onclick = () => {
+  const r = document.documentElement, cur = r.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  r.dataset.theme = cur === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('ds.theme', r.dataset.theme); } catch {}
+};
+try { const th = localStorage.getItem('ds.theme'); if (th) document.documentElement.dataset.theme = th; } catch {}
+
+document.addEventListener('keydown', e => {
+  if (e.target.matches?.('input,textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (document.querySelector('.drawer.open')) { if (e.key === 'Escape') closeDrawers(); return; }
+  const map = { ArrowLeft: 'nope', ArrowRight: 'like', ArrowUp: 'pricey', ArrowDown: 'have', ' ': 'skip' };
+  if (map[e.key]) { e.preventDefault(); act(map[e.key]); }
+  else if (e.key === 'z' || e.key === 'Z') undo();
+  else if (e.key === 'Enter' && current) window.open(current.link, '_blank', 'noopener');
+  else if (e.key === 'r' || e.key === 'R') refresh(true);
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) { unreadAlerts = 0; setBadge(); if (Date.now() - settings.lastFetch > REFRESH_MS) refresh(); }
+});
+
+/* ---------- boot ---------- */
+const sinceVisit = Object.values(deals).filter(d => d.pub > settings.lastVisit && !seen[d.id]).length;
+prune();
+render();                       // instant paint from cache
+if (settings.lastFetch) setStatus(`Cached · ${ago(settings.lastFetch)} ago`);
+refresh().then(() => {
+  if (settings.lastVisit && sinceVisit) toast(`${sinceVisit} new deals since your last visit`);
+  settings.lastVisit = Date.now(); saveAll();
+});
+setInterval(refresh, REFRESH_MS);
+})();
+</script>
+</body>
+</html>
