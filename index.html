@@ -195,8 +195,9 @@ let alerted = store.get('alerted', {});  // id -> t
 const saveAll = () => { store.set('deals', deals); store.set('prefs', prefs); store.set('seen', seen); store.set('settings', settings); store.set('alerted', alerted); };
 
 /* ---------- feed ---------- */
-async function fetchText(url, ms = 9000) {
+async function fetchText(url, signal, ms = 10000) {
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  signal.addEventListener('abort', () => ctl.abort());
   try {
     const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -205,17 +206,22 @@ async function fetchText(url, ms = 9000) {
     return txt;
   } finally { clearTimeout(t); }
 }
+// Race every mirror at once; first valid RSS wins and the rest are cancelled.
+// The last mirror that worked gets a 1.5s head start so we usually only hit one.
 async function fetchFeed() {
   const list = [...PROXIES];
   if (settings.customProxy) list.unshift({ name: 'custom', url: u => settings.customProxy + encodeURIComponent(u) });
-  const i = list.findIndex(p => p.name === settings.lastProxy);
-  if (i > 0) list.unshift(...list.splice(i, 1));
-  let lastErr;
-  for (const p of list) {
-    try { const xml = await fetchText(p.url(FEED)); settings.lastProxy = p.name; return xml; }
-    catch (e) { lastErr = e; console.warn('proxy failed', p.name, e.message); }
-  }
-  throw lastErr || new Error('all proxies failed');
+  const all = new AbortController();
+  const wait = ms => new Promise((res, rej) => { const t = setTimeout(res, ms); all.signal.addEventListener('abort', () => { clearTimeout(t); rej(new Error('cancelled')); }); });
+  const preferred = settings.lastProxy && list.some(p => p.name === settings.lastProxy);
+  try {
+    return await Promise.any(list.map(async p => {
+      if (preferred && p.name !== settings.lastProxy) await wait(1500);
+      try { const xml = await fetchText(p.url(FEED), all.signal); settings.lastProxy = p.name; return xml; }
+      catch (e) { if (!all.signal.aborted) console.warn('proxy failed', p.name, e.message); throw e; }
+    }));
+  } catch { throw new Error('all mirrors failed'); }
+  finally { all.abort(); }
 }
 function parseFeed(xml) {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
@@ -502,10 +508,20 @@ function checkAlerts(fresh) {
 }
 
 /* ---------- refresh loop ---------- */
-let refreshing = false;
+let refreshing = false, retryTimer = null, retryDelay = 0, countdown = null;
+function scheduleRetry() {
+  clearTimeout(retryTimer); clearInterval(countdown);
+  retryDelay = Math.min(REFRESH_MS, retryDelay ? retryDelay * 2 : 5000); // 5s, 10s, 20s, 40s… capped at 5 min
+  const at = Date.now() + retryDelay;
+  const tick = () => setStatus(`${settings.lastFetch ? 'Offline · ' : ''}retrying in ${Math.max(0, Math.ceil((at - Date.now()) / 1000))}s`, true);
+  tick(); countdown = setInterval(tick, 1000);
+  retryTimer = setTimeout(() => { clearInterval(countdown); refresh(); }, retryDelay);
+}
 function setStatus(txt, warn) { const s = $('#status'); s.textContent = txt; s.classList.toggle('warn', !!warn); }
 async function refresh(manual) {
-  if (refreshing) return; refreshing = true;
+  if (refreshing) { if (manual) toast('Already checking all mirrors…'); return; }
+  refreshing = true;
+  clearTimeout(retryTimer); clearInterval(countdown);
   setStatus('Refreshing…');
   try {
     const items = parseFeed(await fetchFeed());
@@ -516,6 +532,7 @@ async function refresh(manual) {
       deals[d.id] = Object.assign(deals[d.id] || {}, d, { seenAt: deals[d.id]?.seenAt || Date.now() });
     }
     prune();
+    retryDelay = 0;
     settings.lastFetch = Date.now();
     saveAll();
     const firstLoad = !settings.lastVisit;
@@ -526,8 +543,9 @@ async function refresh(manual) {
     if (!current) render(); else updateBackCard();
   } catch (e) {
     console.error(e);
-    setStatus(settings.lastFetch ? `Offline · last ${ago(settings.lastFetch)} ago` : 'Feed unavailable, retrying', true);
-    if (!Object.keys(deals).length) deckEl.innerHTML = `<div class="empty"><div style="font-size:40px">⚠️</div><b>Couldn't reach the deal feed</b><div>The free CORS proxies may be down or blocked on this network. Try again, or set a custom proxy in ⚙︎.</div><button class="btn" onclick="location.reload()">Retry</button></div>`;
+    scheduleRetry();
+    if (manual && settings.lastFetch) toast(`All mirrors failed, showing deals from ${ago(settings.lastFetch)} ago. Retrying automatically.`);
+    if (!Object.keys(deals).length) { deckEl.innerHTML = `<div class="empty"><div style="font-size:40px">⚠️</div><b>Couldn't reach the deal feed</b><div>All free CORS mirrors failed. Retrying automatically. If this keeps happening, your network may block them; set a custom proxy in ⚙︎.</div><button class="btn" id="retryNow">Retry now</button></div>`; $('#retryNow').onclick = () => refresh(true); }
   } finally { refreshing = false; }
 }
 function updateBackCard() { /* keep the current card stable; queue will pick up new deals on next swipe */ }
@@ -605,7 +623,8 @@ refresh().then(() => {
   if (settings.lastVisit && sinceVisit) toast(`${sinceVisit} new deals since your last visit`);
   settings.lastVisit = Date.now(); saveAll();
 });
-setInterval(refresh, REFRESH_MS);
+setInterval(() => { if (!retryTimer || !retryDelay) refresh(); }, REFRESH_MS);
+window.addEventListener('online', () => refresh());
 })();
 </script>
 </body>
